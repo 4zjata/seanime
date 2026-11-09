@@ -30,6 +30,7 @@ import {
 } from "./desktop-runtime"
 import { log, setupLogging } from "./logging"
 import { disposeMpvCore, initializeMpvCore, prepareMpvCore, registerMpvCoreIpc } from "./mpv-core"
+import { isClientMode, registerClientModeIpc, resolveServerUrl } from "./client-mode"
 
 let stripAnsi: ((str: string) => string) | undefined
 import("strip-ansi").then(module => {
@@ -614,7 +615,7 @@ async function launchSeanimeServer(isRestart: boolean): Promise<void> {
         }
 
         async function probeServerStartup() {
-            if (startupResolved || !serverProcess || serverProcess.killed) {
+            if (startupResolved || (!isClientMode() && (!serverProcess || serverProcess.killed))) {
                 return
             }
 
@@ -623,19 +624,18 @@ async function launchSeanimeServer(isRestart: boolean): Promise<void> {
             }
         }
 
-        // TEST ONLY: Check for -no-binary flag
-        if (process.argv.includes("-no-binary")) {
-            logger.server.warn("Skipping launch because -no-binary is set")
-            serverStarted = true // Assume server is "started" for UI flow
-            // Resolve immediately to bypass server spawning
-            if (splashScreen && !splashScreen.isDestroyed()) {
-                splashScreen.close()
-                splashScreen = null
-            }
-            if (mainWindow && !mainWindow.isDestroyed() && !denshiSettings.openInBackground) {
-                showMainWindow()
-            }
-            return resolve()
+        if (isClientMode() || process.argv.includes("-no-binary")) {
+            logger.server.info("Running in client mode (remote server:", resolveServerUrl(), ")")
+            startupPollInterval = setInterval(() => {
+                void probeServerStartup()
+            }, 500)
+            void probeServerStartup()
+
+            setTimeout(() => {
+                checkFinalizeStartup("client mode timeout")
+                resolve()
+            }, 6000)
+            return
         }
 
         // Determine the correct binary to use based on platform and architecture
@@ -1298,6 +1298,7 @@ app.whenReady().then(async () => {
     })
 
     registerMpvCoreIpc(mpvCoreSettings)
+    registerClientModeIpc()
     registerIpcHandlers()
 
     setupAppProtocol()

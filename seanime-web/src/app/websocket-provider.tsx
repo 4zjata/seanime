@@ -184,7 +184,9 @@ function WebsocketManagement() {
                 }
             }
 
-            const wsUrl = `${document.location.protocol == "https:" ? "wss" : "ws"}://${getServerBaseUrl(true)}/events`
+            const baseUrl = getServerBaseUrl()
+            const isHttps = baseUrl.startsWith("https:") || document.location.protocol == "https:"
+            const wsUrl = `${isHttps ? "wss" : "ws"}://${getServerBaseUrl(true)}/events`
             const { clientId, clientIdProof } = initClientIdentity()
 
             try {

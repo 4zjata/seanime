@@ -1,19 +1,25 @@
 import { SettingsCard } from "@/app/(main)/settings/_components/settings-card"
+import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { TextInput } from "@/components/ui/text-input"
 import React from "react"
 import { RiSettings3Fill } from "react-icons/ri"
+import { toast } from "sonner"
 
 export function DenshiSettings() {
 
     const [settings, setSettings] = React.useState<DenshiSettings | null>(null)
     const settingsRef = React.useRef<DenshiSettings | null>(null)
     const [loading, setLoading] = React.useState(true)
+    const [serverUrlInput, setServerUrlInput] = React.useState("")
+    const [testingConnection, setTestingConnection] = React.useState(false)
 
     React.useEffect(() => {
         if (window.electron?.denshiSettings) {
             window.electron.denshiSettings.get().then((s) => {
                 setSettings(s)
                 settingsRef.current = s
+                setServerUrlInput(s.serverUrl || "http://127.0.0.1:43211")
                 setLoading(false)
             })
         }
@@ -28,12 +34,99 @@ export function DenshiSettings() {
         window.electron.denshiSettings.set(newSettings)
     }
 
+    async function handleTestConnection() {
+        if (!window.electron?.server?.testConnection) return
+        setTestingConnection(true)
+        try {
+            const ok = await window.electron.server.testConnection(serverUrlInput)
+            if (ok) {
+                toast.success(`Successfully reached Seanime server at ${serverUrlInput}`)
+            } else {
+                toast.error(`Could not reach server at ${serverUrlInput}. Please check the URL, firewall, or port.`)
+            }
+        } catch {
+            toast.error("Connection test failed")
+        } finally {
+            setTestingConnection(false)
+        }
+    }
+
+    async function handleSaveServerUrl() {
+        if (!serverUrlInput.trim()) return
+        updateSetting("serverUrl", serverUrlInput.trim())
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem("sea-remote-server-url", serverUrlInput.trim())
+        }
+        if (window.electron?.server?.setUrl) {
+            await window.electron.server.setUrl(serverUrlInput.trim())
+        }
+        toast.success("Server address saved! Reloading client...")
+        setTimeout(() => {
+            window.location.reload()
+        }, 800)
+    }
+
     if (loading || !settings) {
         return null
     }
 
     return (
         <div className="space-y-4">
+            <SettingsCard title="Server Connection">
+                <div className="space-y-3">
+                    <p className="text-sm text-gray-500">
+                        Configure the Seanime instance this desktop client connects to.
+                    </p>
+                    <div className="flex gap-2 items-center">
+                        <div className="flex-1">
+                            <TextInput
+                                label="Server Address"
+                                value={serverUrlInput}
+                                onChange={(e) => setServerUrlInput(e.target.value)}
+                                placeholder="e.g. http://192.168.1.100:43211"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button
+                            intent="primary"
+                            size="sm"
+                            onClick={handleSaveServerUrl}
+                        >
+                            Save & Reconnect
+                        </Button>
+                        <Button
+                            intent="gray-outline"
+                            size="sm"
+                            loading={testingConnection}
+                            onClick={handleTestConnection}
+                        >
+                            Test Connection
+                        </Button>
+                    </div>
+                </div>
+            </SettingsCard>
+
+            <SettingsCard title="Player Options">
+                <Switch
+                    side="right"
+                    value={settings.useExternalMpv ?? false}
+                    onValueChange={(v) => updateSetting("useExternalMpv", v)}
+                    label="Use system MPV (from $PATH)"
+                    help="When enabled, launches your system's /usr/bin/mpv externally instead of using the embedded libmpv player."
+                />
+                {settings.useExternalMpv && (
+                    <div className="pt-2">
+                        <TextInput
+                            label="MPV Command / Path"
+                            value={settings.externalMpvPath || "mpv"}
+                            onChange={(e) => updateSetting("externalMpvPath", e.target.value)}
+                            placeholder="mpv"
+                        />
+                    </div>
+                )}
+            </SettingsCard>
+
             <SettingsCard title="Window">
                 <Switch
                     side="right"
@@ -66,7 +159,7 @@ export function DenshiSettings() {
 
             <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 dark:bg-gray-900/30 rounded-lg p-3 border border-gray-200 dark:border-gray-800 border-dashed">
                 <RiSettings3Fill className="text-base" />
-                <span>Settings are saved automatically and applied after a restart</span>
+                <span>Denshi Client settings are saved automatically to your user profile.</span>
             </div>
         </div>
     )

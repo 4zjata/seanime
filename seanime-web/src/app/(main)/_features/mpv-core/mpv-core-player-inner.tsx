@@ -924,7 +924,21 @@ function MpvCorePlayerContent(props: MpvCorePlayerContentProps) {
                 if (token !== sessionTokenRef.current) return
                 suppressEndRef.current = false
                 endedRef.current = false
-                await player.load(mc_resolveSource(info.playbackUri))
+                const sourceToLoad = (info.streamUrl && (info.playbackUri?.startsWith("/") || info.playbackUri?.match(/^[a-zA-Z]:\\/)))
+                    ? info.streamUrl
+                    : (info.playbackUri || info.streamUrl)
+
+                const denshiSettings = await window.electron?.denshiSettings?.get?.().catch(() => null)
+                if (denshiSettings?.useExternalMpv && window.electron?.server?.launchExternalMpv) {
+                    log.info("Launching external system MPV from $PATH...")
+                    const fullUrl = mc_resolveSource(sourceToLoad)
+                    const title = info.episode?.displayTitle || info.media?.title?.userPreferred || "Seanime"
+                    await window.electron.server.launchExternalMpv(fullUrl, title)
+                    sendEvent("playback-loaded", { id: info.id, clientId })
+                    return
+                }
+
+                await player.load(mc_resolveSource(sourceToLoad))
                 if (token !== sessionTokenRef.current) return
                 log.info("Video file loaded. Initializing player properties...")
                 sendEvent("playback-loaded", { id: info.id, clientId })

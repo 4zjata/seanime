@@ -2,6 +2,7 @@ import { net } from "electron"
 import http from "node:http"
 import type { AddressInfo } from "node:net"
 import { log } from "./logging"
+import { resolveServerUrl, isServerReachable } from "./client-mode"
 
 const LOCAL_EMBED_HOST = "127.0.0.1"
 const DESKTOP_SERVER_HOST = "127.0.0.1"
@@ -55,24 +56,11 @@ export function getDesktopServerPort(): number {
 }
 
 export function getDesktopServerBaseUrl(): string {
-    return `http://${DESKTOP_SERVER_HOST}:${getDesktopServerPort()}`
+    return resolveServerUrl()
 }
 
 export async function isDesktopServerReachable(): Promise<boolean> {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 1000)
-    try {
-        const response = await net.fetch(`${getDesktopServerBaseUrl()}/api/v1/status`, {
-            signal: controller.signal,
-        })
-        return response.ok
-    }
-    catch {
-        return false
-    }
-    finally {
-        clearTimeout(timeoutId)
-    }
+    return await isServerReachable()
 }
 
 export function startLocalServer(): number {

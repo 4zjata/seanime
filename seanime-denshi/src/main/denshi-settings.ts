@@ -11,6 +11,10 @@ export type DenshiSettings = {
     windowBounds: Electron.Rectangle | null
     windowMaximized: boolean
     mpvPrismLogging: boolean
+    serverUrl?: string
+    clientOnlyMode?: boolean
+    useExternalMpv?: boolean
+    externalMpvPath?: string
 }
 
 export const DENSHI_SETTINGS_DEFAULTS: DenshiSettings = {
@@ -21,6 +25,10 @@ export const DENSHI_SETTINGS_DEFAULTS: DenshiSettings = {
     windowBounds: null,
     windowMaximized: true,
     mpvPrismLogging: false,
+    serverUrl: "http://127.0.0.1:43211",
+    clientOnlyMode: true,
+    useExternalMpv: false,
+    externalMpvPath: "mpv",
 }
 
 function getDenshiSettingsPath(): string {

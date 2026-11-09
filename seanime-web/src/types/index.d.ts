@@ -48,6 +48,12 @@ declare global {
                 getPort: () => Promise<number>;
                 allowWebviewOrigin?: (origin: string) => Promise<boolean>;
             },
+            server?: {
+                getUrl: () => Promise<string>;
+                setUrl: (url: string) => Promise<boolean>;
+                testConnection: (url: string) => Promise<boolean>;
+                launchExternalMpv: (streamUrl: string, title?: string) => Promise<boolean>;
+            },
             startup: {
                 ready: () => void;
             },
@@ -169,5 +175,9 @@ declare global {
         openInBackground: boolean;
         openAtLaunch: boolean;
         updateChannel?: string;
+        serverUrl?: string;
+        clientOnlyMode?: boolean;
+        useExternalMpv?: boolean;
+        externalMpvPath?: string;
     }
 }

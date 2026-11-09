@@ -1,9 +1,22 @@
 const { contextBridge, ipcRenderer } = require("electron")
 
+try {
+    const serverUrl = ipcRenderer.sendSync("denshi:get-server-url-sync")
+    contextBridge.exposeInMainWorld('__SEANIME_SERVER_URL__', serverUrl)
+} catch (e) {
+    // ignore
+}
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
     'electron', {
+        server: {
+            getUrl: () => ipcRenderer.invoke("denshi:get-server-url"),
+            setUrl: (url) => ipcRenderer.invoke("denshi:set-server-url", url),
+            testConnection: (url) => ipcRenderer.invoke("denshi:test-connection", url),
+            launchExternalMpv: (streamUrl, title) => ipcRenderer.invoke("denshi:launch-external-mpv", streamUrl, title),
+        },
         // Window Controls
         window: {
             minimize: () => ipcRenderer.send("window:minimize"),
