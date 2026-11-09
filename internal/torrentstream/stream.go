@@ -532,26 +532,35 @@ func (r *Repository) StopStream(fromNativePlayer ...bool) error {
 	r.client.mu.Lock()
 	//r.client.stopCh = make(chan struct{})
 	r.client.repository.logger.Debug().Msg("torrentstream: Handling media player stopped event")
-	// This is to prevent the client from downloading the whole torrent when the user stops watching
-	// Also, the torrent might be a batch - so we don't want to download the whole thing
+	// This is to prevent the client from downloading unselected files when the user stops watching
 	if r.client.currentTorrent.IsPresent() {
 		currentTorrent := r.client.currentTorrent.MustGet()
-		shouldDrop := r.client.currentTorrentStatus.ProgressPercentage < 70
+		infoHash := currentTorrent.InfoHash()
 
-		// Don't drop if this is the prepared torrent
-		if r.preloadedStream.IsPresent() {
-			prepared := r.preloadedStream.MustGet()
-			if currentTorrent.InfoHash() == prepared.Torrent.InfoHash() {
-				r.client.repository.logger.Debug().Msg("torrentstream: Not dropping torrent as it's being prepared for next episode")
-				shouldDrop = false
+		// If this torrent has downloaded data, keep it alive for long-term seeding
+		if currentTorrent.BytesCompleted() > 0 {
+			// Stop active downloading on files, but continue seeding completed pieces
+			for _, file := range currentTorrent.Files() {
+				file.SetPriority(torrent.PiecePriorityNone)
 			}
-		}
-
-		if shouldDrop {
-			r.client.repository.logger.Debug().Msg("torrentstream: Dropping torrent, completion is less than 70%")
-			infoHash := currentTorrent.InfoHash()
-			currentTorrent.Drop()
-			r.client.removeTorrentFiles(infoHash)
+			if r.client.seedingManager != nil {
+				r.client.seedingManager.TrackTorrent(currentTorrent, "")
+			}
+			r.client.repository.logger.Debug().Msgf("torrentstream: Preserving torrent %s for long-term seeding", infoHash.HexString())
+		} else {
+			// Don't drop if this is the prepared torrent
+			shouldDrop := true
+			if r.preloadedStream.IsPresent() {
+				prepared := r.preloadedStream.MustGet()
+				if currentTorrent.InfoHash() == prepared.Torrent.InfoHash() {
+					shouldDrop = false
+				}
+			}
+			if shouldDrop {
+				r.client.repository.logger.Debug().Msg("torrentstream: Dropping torrent, 0 bytes downloaded")
+				currentTorrent.Drop()
+				r.client.removeTorrentFiles(infoHash)
+			}
 		}
 		r.client.repository.logger.Debug().Msg("torrentstream: Resetting current torrent and status")
 	}

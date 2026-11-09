@@ -35,6 +35,7 @@ type (
 		currentFile          mo.Option[*torrent.File]
 		currentTorrentStatus TorrentStatus
 		cancelFunc           context.CancelFunc
+		seedingManager       *SeedingManager
 
 		mu                          sync.Mutex
 		stopCh                      chan struct{}                    // Closed when the media player stops
@@ -73,6 +74,7 @@ func NewClient(repository *Repository) *Client {
 		stopCh:                      make(chan struct{}),
 		mediaPlayerPlaybackStatusCh: make(chan *mediaplayer.PlaybackStatus, 1),
 	}
+	ret.seedingManager = NewSeedingManager(ret)
 
 	return ret
 }
@@ -149,8 +151,14 @@ func (c *Client) initializeClient() error {
 	}
 	c.repository.logger.Info().Msgf("torrentstream: Initialized torrent client on port %d", settings.TorrentClientPort)
 	c.torrentClient = mo.Some(client)
-	c.dropTorrents()
+	if c.seedingManager != nil {
+		c.seedingManager.RestoreAndCleanup(client, settings.DownloadDir)
+	}
 	c.mu.Unlock()
+
+	if c.seedingManager != nil {
+		go c.seedingManager.BackgroundWorker(ctx)
+	}
 
 	go func(ctx context.Context) {
 
@@ -401,6 +409,9 @@ func (c *Client) addTorrentMagnet(ctx context.Context, magnet string) (*torrent.
 		return nil, errors.New("timeout waiting for torrent info")
 	}
 	c.repository.logger.Info().Msgf("torrentstream: Torrent added: %s", t.InfoHash().HexString())
+	if c.seedingManager != nil {
+		c.seedingManager.TrackTorrent(t, magnet)
+	}
 	return t, nil
 }
 
@@ -430,6 +441,9 @@ func (c *Client) addTorrentFromFile(ctx context.Context, fp string) (*torrent.To
 		return nil, errors.New("timeout waiting for torrent info")
 	}
 	c.repository.logger.Info().Msgf("torrentstream: Torrent added: %s", t.InfoHash().AsString())
+	if c.seedingManager != nil {
+		c.seedingManager.TrackTorrent(t, "")
+	}
 	return t, nil
 }
 
@@ -482,16 +496,21 @@ func (c *Client) addTorrentFromDownloadURL(ctx context.Context, url string) (*to
 		return nil, errors.New("timeout waiting for torrent info")
 	}
 	c.repository.logger.Info().Msgf("torrentstream: Added torrent: %s", t.InfoHash().AsString())
+	if c.seedingManager != nil {
+		c.seedingManager.TrackTorrent(t, "")
+	}
 	return t, nil
 }
 
-// Shutdown closes the torrent client and drops all torrents.
+// Shutdown closes the torrent client.
 // This SHOULD NOT be called if you don't intend to reinitialize the client.
 func (c *Client) Shutdown() (errs []error) {
 	if c.torrentClient.IsAbsent() {
 		return
 	}
-	c.dropTorrents()
+	if c.seedingManager != nil {
+		c.seedingManager.SaveAllStats()
+	}
 	c.currentTorrent = mo.None[*torrent.Torrent]()
 	c.currentTorrentStatus = TorrentStatus{}
 	c.repository.logger.Debug().Msg("torrentstream: Closing torrent client")
@@ -648,6 +667,13 @@ func (c *Client) dropExcessTorrents(keep ...metainfo.Hash) {
 	if c.repository.preloadedStream.IsPresent() {
 		prepared := c.repository.preloadedStream.MustGet()
 		keepHashes[prepared.Torrent.InfoHash()] = true
+	}
+
+	// Keep active long-term seeding torrents
+	if c.seedingManager != nil {
+		for _, hash := range c.seedingManager.GetActiveHashes() {
+			keepHashes[hash] = true
+		}
 	}
 
 	// Drop torrents that aren't in the keep list

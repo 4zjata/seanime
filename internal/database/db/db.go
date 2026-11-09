@@ -103,6 +103,7 @@ func migrateTables(db *gorm.DB) error {
 		&models.ChapterDownloadQueueItem{},
 		&models.TorrentstreamSettings{},
 		&models.TorrentstreamHistory{},
+		&models.TorrentstreamSeedingTorrent{},
 		&models.MediastreamSettings{},
 		&models.MediaFiller{},
 		&models.MangaMapping{},

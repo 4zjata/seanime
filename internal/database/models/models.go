@@ -516,6 +516,18 @@ type TorrentstreamHistory struct {
 	BatchEpisodeFiles []byte `gorm:"column:batch_episode_files" json:"batchEpisodeFiles"`
 }
 
+type TorrentstreamSeedingTorrent struct {
+	BaseModel
+	InfoHash         string     `gorm:"column:info_hash;uniqueIndex" json:"infoHash"`
+	Name             string     `gorm:"column:name" json:"name"`
+	MagnetUri        string     `gorm:"column:magnet_uri;type:text" json:"magnetUri"`
+	StartedSeedingAt time.Time  `gorm:"column:started_seeding_at" json:"startedSeedingAt"`
+	BytesDownloaded  int64      `gorm:"column:bytes_downloaded" json:"bytesDownloaded"`
+	BytesUploaded    int64      `gorm:"column:bytes_uploaded" json:"bytesUploaded"`
+	Active           bool       `gorm:"column:active;default:true" json:"active"`
+	CompletedAt      *time.Time `gorm:"column:completed_at" json:"completedAt"`
+}
+
 // +---------------------+
 // |        Filler       |
 // +---------------------+
