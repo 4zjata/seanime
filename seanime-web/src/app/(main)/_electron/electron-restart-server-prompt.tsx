@@ -5,6 +5,7 @@ import { websocketConnectedAtom, websocketConnectionErrorCountAtom } from "@/app
 import { LuffyError } from "@/components/shared/luffy-error"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
+import { TextInput } from "@/components/ui/text-input"
 import { useAtomValue } from "jotai/react"
 import React from "react"
 import { toast } from "sonner"
@@ -24,7 +25,21 @@ export function ElectronRestartServerPrompt() {
     // Check if the server requires a password (no router dependency)
     const [serverHasPassword, setServerHasPassword] = React.useState(false)
     const [serverReachability, setServerReachability] = React.useState<ServerReachability>("unknown")
+    const [failedProbeCount, setFailedProbeCount] = React.useState(0)
+    const [serverUrlInput, setServerUrlInput] = React.useState("")
+    const [testingConnection, setTestingConnection] = React.useState(false)
+    const [isSaving, setIsSaving] = React.useState(false)
     const serverAuthToken = useAtomValue(serverAuthTokenAtom)
+
+    React.useEffect(() => {
+        if (window.electron?.server?.getUrl) {
+            window.electron.server.getUrl().then((url: string) => {
+                if (url) setServerUrlInput(url)
+            })
+        } else {
+            setServerUrlInput(getServerBaseUrl())
+        }
+    }, [])
 
     const probeServerHealth = React.useCallback(async () => {
         try {
@@ -40,16 +55,19 @@ export function ElectronRestartServerPrompt() {
 
             if (!res.ok) {
                 setServerReachability("unreachable")
+                setFailedProbeCount(c => c + 1)
                 return false
             }
 
             const json = await res.json() as { data?: { serverHasPassword?: boolean } }
             setServerHasPassword(!!json?.data?.serverHasPassword)
             setServerReachability("reachable")
+            setFailedProbeCount(0)
             return true
         }
         catch {
             setServerReachability("unreachable")
+            setFailedProbeCount(c => c + 1)
             return false
         }
     }, [serverAuthToken])
@@ -58,12 +76,9 @@ export function ElectronRestartServerPrompt() {
         probeServerHealth()
     }, [probeServerHealth])
 
-    const threshold = 8
-
     React.useEffect(() => {
         (async () => {
             if (window.electron) {
-                // await window.electron.window.getCurrentWindow() // TODO: Isn't called
                 setHasRendered(true)
             }
         })()
@@ -103,71 +118,145 @@ export function ElectronRestartServerPrompt() {
         }
     }
 
-    // Server is reachable but user hasn't logged in yet
-    const isUnauthenticated = (serverHasPassword && !serverAuthToken) || import.meta.env.MODE === "development"
-    const isServerUnavailable = serverReachability === "unreachable"
+    const handleTestConnection = async () => {
+        if (!serverUrlInput) return
+        setTestingConnection(true)
+        try {
+            let target = serverUrlInput.trim()
+            if (!target.startsWith("http://") && !target.startsWith("https://")) {
+                target = "http://" + target
+            }
+            target = target.replace(/\/+$/, "")
 
-    // Try to reconnect automatically
-    const tryAutoReconnectRef = React.useRef(true)
-    React.useEffect(() => {
-        if (
-            !isConnected
-            && isServerUnavailable
-            && connectionErrorCount >= threshold
-            && tryAutoReconnectRef.current
-            && !isUpdatedInstalled
-            && !isUnauthenticated
-        ) {
-            tryAutoReconnectRef.current = false
-            console.log("Connection error count reached 10, restarting server automatically")
-            handleRestart()
+            if (window.electron?.server?.testConnection) {
+                const ok = await window.electron.server.testConnection(target)
+                if (ok) {
+                    toast.success("Server is reachable!")
+                } else {
+                    toast.error("Could not reach " + target)
+                }
+            } else {
+                const res = await fetch(`${target}/api/v1/status`)
+                if (res.ok) {
+                    toast.success("Server is reachable!")
+                } else {
+                    toast.error("Could not reach " + target)
+                }
+            }
+        } catch {
+            toast.error("Connection test failed")
+        } finally {
+            setTestingConnection(false)
         }
-    }, [connectionErrorCount, isConnected, isServerUnavailable, isUnauthenticated, isUpdatedInstalled])
+    }
+
+    const handleSaveAndConnect = async () => {
+        if (!serverUrlInput) return
+        setIsSaving(true)
+        try {
+            let target = serverUrlInput.trim()
+            if (!target.startsWith("http://") && !target.startsWith("https://")) {
+                target = "http://" + target
+            }
+            target = target.replace(/\/+$/, "")
+
+            if (window.electron?.server?.setUrl) {
+                await window.electron.server.setUrl(target)
+            }
+            if (typeof window !== "undefined" && window.localStorage) {
+                window.localStorage.setItem("sea-remote-server-url", target)
+            }
+            toast.success("Connecting to " + target)
+            setTimeout(() => {
+                window.location.reload()
+            }, 300)
+        } catch {
+            toast.error("Failed to save server URL")
+            setIsSaving(false)
+        }
+    }
+
+    const isServerUnavailable = serverReachability === "unreachable"
+    const isUnauthenticated = !isServerUnavailable && ((serverHasPassword && !serverAuthToken) || import.meta.env.MODE === "development")
 
     React.useEffect(() => {
         if (isConnected) {
             setHasClickedRestarted(false)
-            tryAutoReconnectRef.current = true
         }
     }, [isConnected])
 
     if (!hasRendered || isUnauthenticated) return null
 
-    // Not connected for 10 seconds
+    const isPromptOpen = !isConnected && isServerUnavailable && (connectionErrorCount >= 2 || failedProbeCount >= 2) && !isUpdatedInstalled && !isUpdating
+
     return (
         <>
-            {(!isConnected && connectionErrorCount > 2 && connectionErrorCount < threshold && !isUpdating && !isUpdatedInstalled) && (
+            {(!isConnected && isServerUnavailable && !isPromptOpen && !isUpdating && !isUpdatedInstalled) && (
                 <div className="fixed top-4 left-1/2 z-[9999] -translate-x-1/2 rounded-full border bg-orange-950/85 px-4 py-2 text-sm text-gray-200 shadow-lg backdrop-blur-sm">
-                    {isServerUnavailable
-                        ? "The background server is not responding. Trying to recover..."
-                        : "Reconnecting to the background server..."}
+                    Connecting to Seanime server...
                 </div>
             )}
 
             <Modal
-                open={!isConnected && isServerUnavailable && connectionErrorCount >= threshold && !isUpdatedInstalled}
+                open={isPromptOpen}
                 onOpenChange={() => {}}
                 hideCloseButton
                 contentClass="max-w-2xl"
             >
-                <LuffyError>
-                    <div className="space-y-4 flex flex-col items-center">
-                        <p className="text-lg max-w-sm">
-                            The background server process has stopped responding. Please restart it to continue.
+                <LuffyError title="Cannot connect to server">
+                    <div className="space-y-4 flex flex-col items-center w-full">
+                        <p className="text-base text-center max-w-md text-gray-300">
+                            Unable to reach the Seanime server at:
+                            <br />
+                            <code className="text-xs bg-black/60 px-2.5 py-1 rounded text-orange-300 font-mono mt-1.5 inline-block border border-orange-500/20">
+                                {getServerBaseUrl()}
+                            </code>
                         </p>
 
-                        <Button
-                            onClick={handleRestart}
-                            loading={hasClickedRestarted}
-                            intent="white-outline"
-                            size="lg"
-                            className="rounded-full"
-                        >
-                            Restart server
-                        </Button>
-                        <p className="text-[--muted] text-sm max-w-xl">
-                            If this message persists after multiple tries, please relaunch the application.
-                        </p>
+                        <div className="w-full max-w-md space-y-2 text-left bg-black/40 p-4 rounded-xl border border-white/10">
+                            <label className="text-xs font-semibold text-gray-300">Server Address</label>
+                            <TextInput
+                                value={serverUrlInput}
+                                onValueChange={setServerUrlInput}
+                                placeholder="http://192.168.1.164:43211"
+                                className="w-full"
+                            />
+                            <p className="text-[11px] text-[--muted]">
+                                Enter your Seanime server IP/domain and port (e.g. http://192.168.1.164:43211).
+                            </p>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <Button
+                                    onClick={handleTestConnection}
+                                    loading={testingConnection}
+                                    intent="gray-outline"
+                                    size="sm"
+                                    className="rounded-lg"
+                                >
+                                    Test Connection
+                                </Button>
+                                <Button
+                                    onClick={handleSaveAndConnect}
+                                    loading={isSaving}
+                                    intent="primary"
+                                    size="sm"
+                                    className="rounded-lg"
+                                >
+                                    Save & Connect
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="pt-2 flex items-center gap-2">
+                            <Button
+                                onClick={handleRestart}
+                                loading={hasClickedRestarted}
+                                intent="gray-subtle"
+                                size="sm"
+                                className="rounded-full text-xs text-gray-400"
+                            >
+                                Restart local sidecar
+                            </Button>
+                        </div>
                     </div>
                 </LuffyError>
             </Modal>

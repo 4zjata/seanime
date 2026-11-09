@@ -15,26 +15,34 @@ export function normalizeServerUrl(rawUrl: string): string {
     return clean.replace(/\/+$/, "")
 }
 
+export function parseServerUrlFromArgs(argv: string[]): string | null {
+    if (!argv || !Array.isArray(argv)) return null
+    for (let i = 0; i < argv.length; i++) {
+        if (argv[i].startsWith("--server=")) {
+            return normalizeServerUrl(argv[i].split("=")[1])
+        }
+        if (argv[i] === "--server" && i + 1 < argv.length) {
+            return normalizeServerUrl(argv[i + 1])
+        }
+    }
+    return null
+}
+
 export function resolveServerUrl(): string {
     if (cachedServerUrl) return cachedServerUrl
 
     // 1. Check command line arguments: --server <url> or --server=<url>
-    const argv = process.argv
-    for (let i = 0; i < argv.length; i++) {
-        if (argv[i].startsWith("--server=")) {
-            cachedServerUrl = normalizeServerUrl(argv[i].split("=")[1])
-            return cachedServerUrl
-        }
-        if (argv[i] === "--server" && i + 1 < argv.length) {
-            cachedServerUrl = normalizeServerUrl(argv[i + 1])
-            return cachedServerUrl
-        }
+    const fromArgs = parseServerUrlFromArgs(process.argv)
+    if (fromArgs) {
+        setServerUrl(fromArgs)
+        return fromArgs
     }
 
     // 2. Check environment variable
     if (process.env.SEANIME_SERVER_URL) {
-        cachedServerUrl = normalizeServerUrl(process.env.SEANIME_SERVER_URL)
-        return cachedServerUrl
+        const fromEnv = normalizeServerUrl(process.env.SEANIME_SERVER_URL)
+        setServerUrl(fromEnv)
+        return fromEnv
     }
 
     // 3. Check denshi settings

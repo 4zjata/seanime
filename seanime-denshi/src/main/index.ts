@@ -30,7 +30,7 @@ import {
 } from "./desktop-runtime"
 import { log, setupLogging } from "./logging"
 import { disposeMpvCore, initializeMpvCore, prepareMpvCore, registerMpvCoreIpc } from "./mpv-core"
-import { isClientMode, registerClientModeIpc, resolveServerUrl } from "./client-mode"
+import { isClientMode, parseServerUrlFromArgs, registerClientModeIpc, resolveServerUrl, setServerUrl } from "./client-mode"
 
 let stripAnsi: ((str: string) => string) | undefined
 import("strip-ansi").then(module => {
@@ -484,8 +484,21 @@ if (!gotTheLock) {
 } else {
     app.on("second-instance", (event: Electron.Event, commandLine: string[], workingDirectory: string, additionalData: any) => {
         if (additionalData && additionalData.development) return
-        if (!serverStarted) return
-        // tried to run a second instance, focus the window.
+
+        const newServerUrl = parseServerUrlFromArgs(commandLine)
+        if (newServerUrl) {
+            setServerUrl(newServerUrl)
+            denshiSettings.serverUrl = newServerUrl
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.reload()
+            }
+        }
+
+        // Tried to run a second instance, focus the window and dismiss splash screen if still showing
+        if (splashScreen && !splashScreen.isDestroyed()) {
+            splashScreen.close()
+            splashScreen = null
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
             if (mainWindow.isMinimized()) mainWindow.restore()
             if (!mainWindow.isVisible()) {
@@ -1183,6 +1196,7 @@ app.whenReady().then(async () => {
 
     // Load denshi settings early so environment variables are registered prior to DLL import
     denshiSettings = loadDenshiSettings()
+    denshiSettings.serverUrl = resolveServerUrl()
 
     prepareMpvCore(mpvCoreSettings)
 
