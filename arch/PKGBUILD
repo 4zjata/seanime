@@ -1,0 +1,81 @@
+# Maintainer: voidy <voidy@local>
+pkgname=seanime-denshi-client
+pkgver=3.10.4
+pkgrel=1
+pkgdesc="Desktop client for Seanime anime/manga media server (remote client edition)"
+arch=('x86_64')
+url="https://github.com/5rahim/seanime"
+license=('GPL-3.0-only')
+depends=('gtk3' 'nss' 'alsa-lib' 'libxss')
+optdepends=('mpv: to play videos using external system MPV from $PATH')
+makedepends=('nodejs' 'npm')
+source=(
+    "seanime-denshi-client.desktop"
+    "seanime-denshi-client.sh"
+)
+sha256sums=(
+    'SKIP'
+    'SKIP'
+)
+
+build() {
+    export PATH="/usr/bin:$PATH"
+    local repo_root="${startdir}/.."
+
+    if [[ -d "${repo_root}/seanime-denshi" && -d "${repo_root}/seanime-web" ]]; then
+        # Check if already compiled or recompile if needed
+        if [[ ! -d "${repo_root}/seanime-denshi/dist/linux-unpacked" ]]; then
+            msg2 "Building web interface..."
+            cd "${repo_root}/seanime-web"
+            npm run build:denshi
+
+            msg2 "Staging web-denshi into desktop client..."
+            rm -rf "${repo_root}/seanime-denshi/web-denshi"
+            cp -r "${repo_root}/seanime-web/out-denshi" "${repo_root}/seanime-denshi/web-denshi"
+
+            msg2 "Building Electron main process & syncing mpv-prism..."
+            cd "${repo_root}/seanime-denshi"
+            mkdir -p "${repo_root}/seanime-denshi/binaries"
+            npm run build:main
+            npm run sync:mpv-prism -- linux-x64
+
+            msg2 "Packaging client files..."
+            npx electron-builder build --linux --dir
+        else
+            msg2 "Using prebuilt client files from dist/linux-unpacked..."
+        fi
+    else
+        error "Could not find seanime-denshi and seanime-web directories in parent folder."
+        return 1
+    fi
+}
+
+package() {
+    local repo_root="${startdir}/.."
+    local app_dir="${pkgdir}/usr/lib/${pkgname}"
+
+    install -dm755 "${app_dir}"
+    cp -a "${repo_root}/seanime-denshi/dist/linux-unpacked/"* "${app_dir}/"
+
+    # Install launcher scripts
+    install -Dm755 "${srcdir}/seanime-denshi-client.sh" "${pkgdir}/usr/bin/${pkgname}"
+    ln -s "${pkgname}" "${pkgdir}/usr/bin/seanime-denshi"
+
+    # Install desktop entry
+    install -Dm644 "${srcdir}/seanime-denshi-client.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+
+    # Install icons in standard resolutions
+    for res in 16 18 24 32 48 64 128 256 512 1024; do
+        if [[ -f "${repo_root}/seanime-denshi/assets/${res}x${res}.png" ]]; then
+            install -Dm644 "${repo_root}/seanime-denshi/assets/${res}x${res}.png" \
+                "${pkgdir}/usr/share/icons/hicolor/${res}x${res}/apps/${pkgname}.png"
+        fi
+    done
+    install -Dm644 "${repo_root}/seanime-denshi/assets/icon.png" \
+        "${pkgdir}/usr/share/pixmaps/${pkgname}.png"
+
+    # Install license
+    if [[ -f "${repo_root}/LICENSE" ]]; then
+        install -Dm644 "${repo_root}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    fi
+}

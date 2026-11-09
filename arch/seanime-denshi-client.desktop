@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Seanime Denshi
+GenericName=Anime & Manga Media Player
+Comment=Desktop client for Seanime media server (remote client)
+Exec=/usr/bin/seanime-denshi-client %U
+Icon=seanime-denshi-client
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;
+StartupWMClass=seanime-denshi
+MimeType=x-scheme-handler/seanime;
