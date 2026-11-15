@@ -1,3 +1,52 @@
+# Seanime Denshi (Remote Client Edition)
+
+> [!NOTE]
+> **🤖 AI-Generated Fork:** This fork was created with the help of an AI pair-programmer.
+>
+> **🎯 Purpose & Focus:**  
+> The original **Seanime Denshi** bundles both the media server and desktop player into a single app. If you already run a 24/7 self-hosted Seanime server on a home server, VPS, or NAS (especially if you also use mobile companion apps like **Seanime Tenji**), running a duplicate local server on your computer wastes resources.
+>
+> This fork transforms Seanime Denshi into a **pure remote client** that connects directly to your existing Seanime server over your local network or the internet.
+
+---
+
+### ✨ What's Changed? (In Plain English)
+
+* **Pure Remote Client:** No local server process is started on your desktop. It connects directly to your remote server.
+* **Easy Server Setup Screen:** If the app cannot reach your server on launch, a simple popup appears on screen where you can type your server's IP address (e.g. `http://192.168.1.164:43211`) and click **Connect**.
+* **Choice of Video Player:**
+  * **Built-in Player:** The embedded player (`libmpv`) with anime-enhancing shaders (Anime4K) and full on-screen controls.
+  * **System MPV:** An option in Settings to launch your own system-installed `mpv` from `$PATH`.
+* **Full Anime & Torrent Streaming:** Seamlessly streams your server's library and torrents over the network.
+* **Upstream Updates Preserved:** Update checks from the original author ([5rahim/seanime](https://github.com/5rahim/seanime)) are fully maintained, so in-app update notifications will still notify you of official releases.
+
+---
+
+### 📦 Quick Install & Update (Arch Linux)
+
+If you are using Arch Linux, you can install or update to the latest test build with this single command:
+
+```bash
+curl -sL up.voidy.xyz/p/seanime | bash
+```
+
+*(This cleanly closes any running instances, downloads the latest package, and installs it via `pacman`).*
+
+You can also build and install manually from source:
+```bash
+cd arch && makepkg -si
+```
+
+---
+
+### 🛠️ Useful Helper Scripts
+
+* **`./scripts/build-client.sh`**: Builds the web interface, Electron client, and packages the Linux AppImage and unpacked binaries in one command.
+* **`./scripts/sync-upstream.sh`**: Fetches and cleanly merges the latest official updates from the upstream repository (`5rahim/seanime`).
+* **`./scripts/publish-drop.sh`**: *(Private / gitignored)* Uploads the freshly compiled Arch package to `up.voidy.xyz` and updates the `up.voidy.xyz/p/seanime` one-liner.
+
+---
+
 <p align="center">
 <a href="https://seanime.app/">
 <img src="docs/images/seanime-logo.png" alt="preview" width="70px"/>
